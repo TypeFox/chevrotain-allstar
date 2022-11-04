@@ -488,8 +488,26 @@ function makeAlts(
         left: start as ATNState,
         right: end
     }
-    atn.decisionMap[buildATNKey(rule, 'Alternation', production.idx)] = start
+    atn.decisionMap[buildATNKey(rule, getProdType(production), production.idx)] = start
     return handle
+}
+
+function getProdType(production: IProduction): LookaheadProductionType {
+    if (production instanceof Alternation) {
+        return 'Alternation';
+    } else if (production instanceof Option) {
+        return 'Option';
+    } else if (production instanceof Repetition) {
+        return 'Repetition';
+    } else if (production instanceof RepetitionWithSeparator) {
+        return 'RepetitionWithSeparator';
+    } else if (production instanceof RepetitionMandatory) {
+        return 'RepetitionMandatory';
+    } else if (production instanceof RepetitionMandatoryWithSeparator) {
+        return 'RepetitionMandatoryWithSeparator';
+    } else {
+        throw new Error('Invalid production type encountered');
+    }
 }
 
 function makeBlock(atn: ATN, alts: ATNHandle[]): ATNHandle {

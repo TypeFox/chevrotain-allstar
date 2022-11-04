@@ -172,6 +172,28 @@ describe("ATN Simulator", () => {
                     }
                 ])
             })
+
+            AltWithOption = this.RULE("AltWithOption", () => {
+                const intermediate = this.OR([
+                    {
+                        ALT: () => {
+                            this.CONSUME1(A)
+                            return 2
+                        }
+                    },
+                    {
+                        ALT: () => {
+                            this.CONSUME2(B)
+                            return 4
+                        }
+                    }
+                ])
+                const option = this.OPTION(() => {
+                    this.CONSUME3(A);
+                    return 1;
+                })
+                return (option ?? 0) + intermediate;
+            })
         }
 
         it("Should pick option on ambiguity", () => {
@@ -245,6 +267,13 @@ describe("ATN Simulator", () => {
             const result = parser.AltRuleWithPred(undefined)
             expect(result).toBe(2);
             expect(parser.ambiguityReports).toHaveLength(0);
+        })
+
+        it("Should work with alternatives followed by optional elements", () => {
+            const parser = new AmbigiousParser();
+            parser.input = [createRegularToken(B), createRegularToken(A)];
+            const result = parser.AltWithOption();
+            expect(result).toBe(5);
         })
     })
 })
