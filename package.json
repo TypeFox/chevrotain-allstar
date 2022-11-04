@@ -1,0 +1,27 @@
+{
+  "name": "chevrotain-allstar",
+  "version": "0.1.0",
+  "description": "",
+  "author": "",
+  "license": "MIT",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "vitest",
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "files": [
+    "src",
+    "lib"
+  ],
+  "dependencies": {
+    "chevrotain": "^10.4.1",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.2.1",
+    "@types/lodash": "^4.14.186",
+    "typescript": "^4.8.4",
+    "vitest": "^0.24.4"
+  }
+}
