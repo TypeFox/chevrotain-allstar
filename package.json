@@ -1,6 +1,6 @@
 {
   "name": "chevrotain-allstar",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "LL(*) lookahead strategy for the Chevrotain parser library",
   "keywords": [
     "parser",

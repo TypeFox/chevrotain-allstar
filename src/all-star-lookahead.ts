@@ -148,7 +148,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
         const key = buildATNKey(rule, 'Alternation', prodOccurrence);
         const decisionState = this.atn.decisionMap[key];
         const decisionIndex = decisionState.decision;
-        const partialAlts = map(
+        const partialAlts: (TokenType | undefined)[][] = map(
             getLookaheadPaths({
                 maxLookahead: 1,
                 occurrence: prodOccurrence,
@@ -163,10 +163,12 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
                 partialAlts,
                 (result, currAlt, idx) => {
                     forEach(currAlt, (currTokType) => {
-                        result[currTokType.tokenTypeIdx!] = idx
-                        forEach(currTokType.categoryMatches!, (currExtendingType) => {
-                            result[currExtendingType] = idx
-                        })
+                        if (currTokType) {
+                            result[currTokType.tokenTypeIdx!] = idx
+                            forEach(currTokType.categoryMatches!, (currExtendingType) => {
+                                result[currExtendingType] = idx
+                            })
+                        }
                     })
                     return result
                 },
@@ -278,18 +280,19 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
 
 }
 
-function isLL1Sequence(sequences: TokenType[][], allowEmpty = true): boolean {
+function isLL1Sequence(sequences: (TokenType | undefined)[][], allowEmpty = true): boolean {
     const fullSet = new Set<number>()
 
     for (const alt of sequences) {
-        if (allowEmpty === false && alt[0] === undefined) {
-            return false
-        }
         const altSet = new Set<number>()
         for (const tokType of alt) {
             if (tokType === undefined) {
-                // Epsilon production encountered
-                break
+                if (allowEmpty) {
+                    // Epsilon production encountered
+                    break
+                } else {
+                    return false;
+                }
             }
             const indices = [tokType.tokenTypeIdx!].concat(tokType.categoryMatches!)
             for (const index of indices) {
