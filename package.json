@@ -1,6 +1,6 @@
 {
   "name": "chevrotain-allstar",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LL(*) lookahead strategy for the Chevrotain parser library",
   "keywords": [
     "parser",
@@ -14,7 +14,8 @@
   "scripts": {
     "test": "vitest",
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "clean": "shx rm -rf lib tsconfig.tsbuildinfo"
   },
   "files": [
     "src",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@types/jest": "^29.2.1",
     "@types/lodash": "^4.14.186",
+    "shx": "^0.3.4",
     "typescript": "^4.8.4",
     "vitest": "^0.24.4"
   },

@@ -178,9 +178,9 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
             if (hasPredicates) {
                 return function (this: BaseParser, orAlts) {
                     const nextToken = this.LA(1)
-                    const prediction: number = choiceToAlt[nextToken.tokenTypeIdx]
-                    if (orAlts !== undefined) {
-                        const gate = orAlts[prediction].GATE
+                    const prediction: number | undefined = choiceToAlt[nextToken.tokenTypeIdx]
+                    if (orAlts !== undefined && prediction !== undefined) {
+                        const gate = orAlts[prediction]?.GATE
                         if (gate !== undefined && gate.call(this) === false) {
                             return undefined;
                         }
@@ -188,7 +188,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
                     return prediction
                 }
             } else {
-                return function (this: BaseParser): number {
+                return function (this: BaseParser): number | undefined {
                     const nextToken = this.LA(1)
                     return choiceToAlt[nextToken.tokenTypeIdx];
                 }
