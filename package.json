@@ -1,6 +1,6 @@
 {
   "name": "chevrotain-allstar",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "LL(*) lookahead strategy for the Chevrotain parser library",
   "keywords": [
     "parser",
@@ -22,7 +22,7 @@
     "lib"
   ],
   "dependencies": {
-    "chevrotain": "^10.4.1",
+    "chevrotain": "~10.4.1",
     "lodash": "^4.17.21"
   },
   "devDependencies": {
