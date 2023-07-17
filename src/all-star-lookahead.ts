@@ -37,7 +37,7 @@ import {
     EpsilonTransition,
     RuleTransition,
     Transition
-} from "./atn";
+} from "./atn.js";
 import {
     ATNConfig,
     ATNConfigSet,
@@ -45,15 +45,15 @@ import {
     DFAState,
     DFA_ERROR,
     getATNConfigKey
-} from "./dfa";
-import min from "lodash/min";
-import flatMap from "lodash/flatMap";
-import uniqBy from "lodash/uniqBy";
-import map from "lodash/map";
-import flatten from "lodash/flatten";
-import forEach from "lodash/forEach";
-import isEmpty from "lodash/isEmpty";
-import reduce from "lodash/reduce";
+} from "./dfa.js";
+import min from "lodash-es/min.js";
+import flatMap from "lodash-es/flatMap.js";
+import uniqBy from "lodash-es/uniqBy.js";
+import map from "lodash-es/map.js";
+import flatten from "lodash-es/flatten.js";
+import forEach from "lodash-es/forEach.js";
+import isEmpty from "lodash-es/isEmpty.js";
+import reduce from "lodash-es/reduce.js";
 
 type DFACache = (predicateSet: PredicateSet) => DFA
 

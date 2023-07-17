@@ -8,4 +8,4 @@ export {
     AmbiguityReport,
     LLStarLookaheadOptions,
     LLStarLookaheadStrategy
-} from './all-star-lookahead';
+} from './all-star-lookahead.js';

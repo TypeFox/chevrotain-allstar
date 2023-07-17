@@ -4,8 +4,8 @@
  * terms of the MIT License, which is available in the project root.
  ******************************************************************************/
 
-import map from "lodash/map"
-import filter from "lodash/filter"
+import map from "lodash-es/map.js"
+import filter from "lodash-es/filter.js"
 import {
     IProduction,
     IProductionWithOccurrence,

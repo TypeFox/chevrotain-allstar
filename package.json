@@ -1,6 +1,6 @@
 {
   "name": "chevrotain-allstar",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "LL(*) lookahead strategy for the Chevrotain parser library",
   "keywords": [
     "parser",
@@ -9,8 +9,14 @@
     "langium"
   ],
   "license": "MIT",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "type": "module",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+        "default": "./lib/index.js",
+        "types": "./lib/index.d.ts"
+    }
+  },
   "scripts": {
     "test": "vitest",
     "build": "tsc",
@@ -22,17 +28,17 @@
     "lib"
   ],
   "dependencies": {
-    "lodash": "^4.17.21"
+    "lodash-es": "^4.17.21"
   },
   "peerDependencies": {
-    "chevrotain": "^10.4.1"
+    "chevrotain": "^11.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.2.1",
-    "@types/lodash": "^4.14.186",
+    "@types/lodash-es": "^4.17.8",
     "shx": "^0.3.4",
-    "typescript": "^4.8.4",
-    "vitest": "^0.24.4"
+    "typescript": "^5.1.6",
+    "vitest": "^0.33.0"
   },
   "repository": {
     "type": "git",

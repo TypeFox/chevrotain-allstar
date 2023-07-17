@@ -4,8 +4,8 @@
  * terms of the MIT License, which is available in the project root.
  ******************************************************************************/
 
-import map from "lodash/map"
-import { ATNState, DecisionState } from "./atn"
+import map from "lodash-es/map.js"
+import { ATNState, DecisionState } from "./atn.js"
 
 export interface DFA {
   start?: DFAState
