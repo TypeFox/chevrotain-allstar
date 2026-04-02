@@ -349,7 +349,8 @@ function performLookahead(
 
     let i = 1
     const path: IToken[] = []
-    let t = this.LA(i++)
+    // Using LA_FAST is fine here
+    let t = this.LA_FAST(i++)
 
     while (true) {
         let d = getExistingTargetState(previousD, t)
@@ -367,6 +368,8 @@ function performLookahead(
 
         previousD = d
         path.push(t)
+        // We might be reading out of bounds
+        // Therefore, no LA_FAST here
         t = this.LA(i++)
     }
 }
