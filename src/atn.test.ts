@@ -4,6 +4,8 @@
  * terms of the MIT License, which is available in the project root.
  ******************************************************************************/
 
+/// <reference types="vitest/globals" />
+
 import { createToken, EmbeddedActionsParser, EOF, IToken, TokenType } from "chevrotain"
 import { LLStarLookaheadStrategy } from "./all-star-lookahead"
 import { describe, expect, it } from "vitest"
