@@ -177,7 +177,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
 
             if (hasPredicates) {
                 return function (this: BaseParser, orAlts) {
-                    const nextToken = this.LA(1)
+                    const nextToken = this.LA_FAST(1)
                     const prediction: number | undefined = choiceToAlt[nextToken.tokenTypeIdx]
                     if (orAlts !== undefined && prediction !== undefined) {
                         const gate = orAlts[prediction]?.GATE
@@ -189,7 +189,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
                 }
             } else {
                 return function (this: BaseParser): number | undefined {
-                    const nextToken = this.LA(1)
+                    const nextToken = this.LA_FAST(1)
                     return choiceToAlt[nextToken.tokenTypeIdx];
                 }
             }
@@ -249,7 +249,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
               const expectedTokenUniqueKey = expectedTokenType.tokenTypeIdx
         
               return function (this: BaseParser): boolean {
-                return this.LA(1).tokenTypeIdx === expectedTokenUniqueKey
+                return this.LA_FAST(1).tokenTypeIdx === expectedTokenUniqueKey
               }
             } else {
               const choiceToAlt = reduce(
@@ -267,7 +267,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
               )
         
               return function (this: BaseParser): boolean {
-                const nextToken = this.LA(1)
+                const nextToken = this.LA_FAST(1)
                 return choiceToAlt[nextToken.tokenTypeIdx] === true
               }
             }
