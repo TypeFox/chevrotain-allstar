@@ -550,7 +550,9 @@ function computeReachSet(
         }
     }
 
-    if (skippedStopStates.length > 0 && !hasConfigInRuleStopState(reach)) {
+    if (skippedStopStates.length > 0 && reach.size === 0) {
+        // If no new configs could be reached and some old configs were in a rule stop state, add those old configs
+        // They are the only ones that "match" the previous input, and should thus be chosen as the best prediction
         for (const c of skippedStopStates) {
             reach.add(c)
         }
@@ -697,15 +699,6 @@ function getEpsilonTarget(
         }
     }
     return undefined
-}
-
-function hasConfigInRuleStopState(configs: ATNConfigSet): boolean {
-    for (const c of configs.elements) {
-        if (c.state.type === ATN_RULE_STOP) {
-            return true
-        }
-    }
-    return false
 }
 
 function allConfigsInRuleStopStates(configs: ATNConfigSet): boolean {
