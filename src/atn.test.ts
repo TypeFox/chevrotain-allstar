@@ -83,7 +83,9 @@ describe("ATN Simulator", () => {
         class IncompleteLookaheadParser extends EmbeddedActionsParser {
             constructor() {
                 super([A, B, C], {
-                    lookaheadStrategy: new LLStarLookaheadStrategy()
+                    lookaheadStrategy: new LLStarLookaheadStrategy({
+                        incomplete: true
+                    })
                 })
                 this.performSelfAnalysis()
             }
@@ -140,7 +142,9 @@ describe("ATN Simulator", () => {
         class IncompleteLookaheadParser extends EmbeddedActionsParser {
             constructor() {
                 super([A, B, C], {
-                    lookaheadStrategy: new LLStarLookaheadStrategy()
+                    lookaheadStrategy: new LLStarLookaheadStrategy({
+                        incomplete: true
+                    })
                 })
                 this.performSelfAnalysis()
             }
