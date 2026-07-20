@@ -9,6 +9,64 @@ import { LLStarLookaheadStrategy } from "./all-star-lookahead"
 import { describe, expect, it } from "vitest"
 
 describe("ATN Simulator", () => {
+
+    describe("Outer context LL(1)", () => {
+        const A = createToken({ name: "A", pattern: "a" })
+        const B = createToken({ name: "B", pattern: "b" })
+        const C = createToken({ name: "C", pattern: "c" })
+
+        class UnboundedLookaheadParser extends EmbeddedActionsParser {
+            constructor() {
+                super([A, B, C], {
+                    lookaheadStrategy: new LLStarLookaheadStrategy()
+                })
+                this.performSelfAnalysis()
+            }
+
+            Main = this.RULE("LongRule", () => {
+                this.SUBRULE(this.Inner);
+                this.CONSUME(B);
+                this.CONSUME(A);
+            });
+
+            Inner = this.RULE("Inner", () => {
+                this.CONSUME(A);
+                this.OPTION(() => {
+                    // Local lookahead will determine that this is LL(1)
+                    // Outer context analysis will identify that it needs LL(*)
+                    this.CONSUME(B);
+                    this.CONSUME(C);
+                });
+            });
+
+
+        }
+
+        it("Should be able to take outer context into account", () => {
+            const parser = new UnboundedLookaheadParser()
+            parser.input = [
+                createRegularToken(A),
+                createRegularToken(B),
+                createRegularToken(A)
+            ]
+            parser.Main()
+            expect(parser.errors).toHaveLength(0);
+        })
+
+        it("Should still parse as expected if all tokens are present", () => {
+            const parser = new UnboundedLookaheadParser()
+            parser.input = [
+                createRegularToken(A),
+                createRegularToken(B),
+                createRegularToken(C),
+                createRegularToken(B),
+                createRegularToken(A)
+            ]
+            parser.Main()
+            expect(parser.errors).toHaveLength(0);
+        })
+    })
+
     describe("LL(*) lookahead", () => {
         const A = createToken({ name: "A", pattern: "a" })
         const B = createToken({ name: "B", pattern: "b" })

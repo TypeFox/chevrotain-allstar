@@ -121,6 +121,9 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
     private dfas: DFACache[];
     private logging: AmbiguityReport;
     private incomplete: boolean;
+    // Maps each rule to the follow states of its call sites, used to compute a
+    // decision's true (cross-rule) FOLLOW set for outer-context LL(1) analysis.
+    private callers: Map<Rule, ATNState[]>;
 
     constructor(options?: LLStarLookaheadOptions) {
         super();
@@ -131,6 +134,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
     override initialize(options: { rules: Rule[] }): void {
         this.atn = createATN(options.rules);
         this.dfas = initATNSimulator(this.atn);
+        this.callers = buildCallers(this.atn);
     }
 
     override validateAmbiguousAlternationAlternatives(): ILookaheadValidationError[] {
@@ -230,6 +234,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
         const dfas = this.dfas;
         const logging = this.logging;
         const incomplete = this.incomplete;
+        const callers = this.callers;
         const key = buildATNKey(rule, prodType, prodOccurrence);
         const decisionState = this.atn.decisionMap[key];
         const decisionIndex = decisionState.decision;
@@ -245,7 +250,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
             }
           )
         
-          if (isLL1Sequence(alts) && alts[0][0] && !dynamicTokensEnabled) {
+          if (isLL1Sequence(alts) && alts[0][0] && !dynamicTokensEnabled && !optionalHasFollowConflict(decisionState, prodType, callers)) {
             const alt = alts[0]
             const singleTokensTypes = flatten(alt)
         
@@ -316,6 +321,92 @@ function isLL1Sequence(sequences: (TokenType | undefined)[][], allowEmpty = true
         }
     }
     return true
+}
+
+// Maps each rule to the follow states of its call sites, so a decision's true
+// (cross-rule) FOLLOW set can be computed by continuing into the enclosing context.
+function buildCallers(atn: ATN): Map<Rule, ATNState[]> {
+    const callers = new Map<Rule, ATNState[]>()
+    for (const state of atn.states) {
+        for (const transition of state.transitions) {
+            if (transition instanceof RuleTransition) {
+                let followStates = callers.get(transition.rule)
+                if (followStates === undefined) {
+                    followStates = []
+                    callers.set(transition.rule, followStates)
+                }
+                followStates.push(transition.followState)
+            }
+        }
+    }
+    return callers
+}
+
+// Collects the set of token type indices reachable first from `start`, following
+// epsilon and rule (descend into callee) edges. When `callers` is provided and a
+// rule-stop state is reached, the traversal continues into every caller's follow
+// state, yielding the cross-rule FOLLOW set (outer context). The shared visited
+// set guards against infinite recursion through recursive or transitive follows.
+function firstSet(start: ATNState, callers?: Map<Rule, ATNState[]>): Set<number> {
+    const result = new Set<number>()
+    const visited = new Set<ATNState>()
+    const queue: ATNState[] = [start]
+    while (queue.length > 0) {
+        const current = queue.shift()!
+        if (visited.has(current)) {
+            continue
+        }
+        visited.add(current)
+        if (current.type === ATN_RULE_STOP) {
+            if (callers !== undefined) {
+                const followStates = callers.get(current.rule)
+                if (followStates !== undefined) {
+                    queue.push(...followStates)
+                }
+            }
+            continue
+        }
+        for (const transition of current.transitions) {
+            if (transition instanceof AtomTransition) {
+                result.add(transition.tokenType.tokenTypeIdx!)
+                for (const category of transition.tokenType.categoryMatches!) {
+                    result.add(category)
+                }
+            } else {
+                // Epsilon and rule transitions: descend into the target
+                queue.push(transition.target)
+            }
+        }
+    }
+    return result
+}
+
+// Reports whether an optional/loop guard's local LL(1) decision would be wrong
+// once the outer context is taken into account. This happens when the tokens
+// that enter (or continue) the production overlap with the tokens that can
+// follow it after exiting — a single lookahead token then cannot decide, so the
+// decision must fall back to LL(*) adaptive prediction.
+function optionalHasFollowConflict(
+    decisionState: DecisionState,
+    prodType: OptionalProductionType,
+    callers: Map<Rule, ATNState[]>
+): boolean {
+    // The mandatory-with-separator loop places its exit edge at index 0 and its
+    // continue (via separator) edge at index 1; every other production is reversed.
+    const sepPlus = prodType === "RepetitionMandatoryWithSeparator"
+    const enterTransition = decisionState.transitions[sepPlus ? 1 : 0]
+    const exitTransition = decisionState.transitions[sepPlus ? 0 : 1]
+    if (enterTransition === undefined || exitTransition === undefined) {
+        return false
+    }
+    const enter = firstSet(enterTransition.target)
+    const exit = firstSet(exitTransition.target, callers)
+    for (const id of enter) {
+        if (exit.has(id)) {
+            return true
+        }
+    }
+    return false
 }
 
 function initATNSimulator(atn: ATN): DFACache[] {
