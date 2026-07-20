@@ -384,7 +384,7 @@ function firstSet(start: ATNState, callers?: Map<Rule, ATNState[]>): Set<number>
 // Reports whether an optional/loop guard's local LL(1) decision would be wrong
 // once the outer context is taken into account. This happens when the tokens
 // that enter (or continue) the production overlap with the tokens that can
-// follow it after exiting — a single lookahead token then cannot decide, so the
+// follow it after exiting. A single lookahead token then cannot decide, so the
 // decision must fall back to LL(*) adaptive prediction.
 function optionalHasFollowConflict(
     decisionState: DecisionState,
