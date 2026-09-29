@@ -385,17 +385,16 @@ function plus(
     atn.decisionMap[buildATNKey(rule, sep ? 'RepetitionMandatoryWithSeparator' : 'RepetitionMandatory', plus.idx)] = loop;
     epsilon(blkEnd, loop) // block can see loop back
 
-    // Depending on whether we have a separator we put the exit transition at index 1 or 0
-    // This influences the chosen option in the lookahead DFA
+    // The continue edge is always at index 0 and the exit edge at index 1,
+    // consistent with all other decision states
     if (sep === undefined) {
         epsilon(loop, blkStart) // loop back to start
-        epsilon(loop, end) // exit
     } else {
-        epsilon(loop, end) // exit
         // loop back to start with separator
         epsilon(loop, sep.left)
         epsilon(sep.right, blkStart)
     }
+    epsilon(loop, end) // exit
 
     return {
         left: blkStart,

@@ -67,6 +67,174 @@ describe("ATN Simulator", () => {
         })
     })
 
+    describe("Outer context with erroneous input", () => {
+        const Id = createToken({ name: "Id", pattern: "id" })
+        const LParen = createToken({ name: "LParen", pattern: "(" })
+        const RParen = createToken({ name: "RParen", pattern: ")" })
+        const Comma = createToken({ name: "Comma", pattern: "," })
+        const Plus = createToken({ name: "Plus", pattern: "+" })
+
+        // Statements are not separated by a delimiter, so `(` and `+` can both
+        // continue the current expression and start the next statement
+        class CallParser extends EmbeddedActionsParser {
+            statements = 0
+            ambiguityReports: string[] = []
+
+            constructor() {
+                super([Id, LParen, RParen, Comma, Plus], {
+                    lookaheadStrategy: new LLStarLookaheadStrategy({
+                        logging: (message) => this.ambiguityReports.push(message)
+                    })
+                })
+                this.performSelfAnalysis()
+            }
+
+            Program = this.RULE("Program", () => {
+                this.MANY(() => {
+                    this.ACTION(() => this.statements++)
+                    this.SUBRULE(this.Additive)
+                })
+            })
+
+            Additive = this.RULE("Additive", () => {
+                this.SUBRULE(this.Prefix)
+                this.MANY(() => {
+                    this.CONSUME(Plus)
+                    this.SUBRULE2(this.Prefix)
+                })
+            })
+
+            Prefix = this.RULE("Prefix", () => {
+                this.OPTION(() => this.CONSUME(Plus))
+                this.SUBRULE(this.Call)
+            })
+
+            Call = this.RULE("Call", () => {
+                this.SUBRULE(this.Primary)
+                this.MANY(() => {
+                    this.CONSUME(LParen)
+                    this.MANY_SEP({
+                        SEP: Comma,
+                        DEF: () => this.SUBRULE(this.Additive)
+                    })
+                    this.CONSUME(RParen)
+                })
+            })
+
+            Primary = this.RULE("Primary", () => {
+                this.OR([
+                    { ALT: () => this.CONSUME(Id) },
+                    {
+                        ALT: () => {
+                            this.CONSUME(LParen)
+                            this.SUBRULE(this.Additive)
+                            this.CONSUME(RParen)
+                        }
+                    }
+                ])
+            })
+        }
+
+        function parse(...tokens: TokenType[]) {
+            const parser = new CallParser()
+            parser.input = tokens.map(e => createRegularToken(e))
+            parser.Program()
+            return {
+                statements: parser.statements,
+                errors: parser.errors.map(e => `${e.name} in ${e.context.ruleStack.at(-1)}`)
+            }
+        }
+
+        it("Should parse valid input", () => {
+            expect(parse(Id, LParen, Id, Comma, Id, RParen, LParen, RParen)).toEqual({ statements: 1, errors: [] })
+            expect(parse(Id, Plus, Id, LParen, Id, RParen, Id)).toEqual({ statements: 2, errors: [] })
+        })
+
+        it("Should report every ambiguous alternative once", () => {
+            const parser = new CallParser()
+            // `id + id (id) id`: Multiple configs of each alternative are part of the conflict
+            parser.input = [Id, Plus, Id, LParen, Id, RParen, Id].map(e => createRegularToken(e))
+            parser.Program()
+            expect(parser.ambiguityReports.length).toBeGreaterThan(0)
+            for (const report of parser.ambiguityReports) {
+                expect(report).toMatch("<0, 1> in <MANY>")
+            }
+        })
+
+        it("Should enter an unclosed call", () => {
+            expect(parse(Id, LParen)).toEqual({ statements: 1, errors: ["MismatchedTokenException in Call"] })
+            expect(parse(Id, LParen, Id)).toEqual({ statements: 1, errors: ["MismatchedTokenException in Call"] })
+            expect(parse(Id, LParen, Id, Comma)).toEqual({ statements: 1, errors: ["NoViableAltException in Primary"] })
+        })
+
+        it("Should enter an unclosed call followed by further statements", () => {
+            expect(parse(Id, LParen, Id, Id, Plus, Id)).toEqual({ statements: 1, errors: ["MismatchedTokenException in Call"] })
+        })
+
+        it("Should enter an incomplete binary expression", () => {
+            expect(parse(Id, Plus)).toEqual({ statements: 1, errors: ["NoViableAltException in Primary"] })
+        })
+    })
+
+    describe("Follow conflict in mandatory repetition with separator", () => {
+        const Id = createToken({ name: "Id", pattern: "id" })
+        const Comma = createToken({ name: "Comma", pattern: "," })
+        const Semi = createToken({ name: "Semi", pattern: ";" })
+
+        // The comma both continues the list and starts the optional suffix,
+        // so the loop's enter/exit decision conflicts with the outer context
+        class ListParser extends EmbeddedActionsParser {
+            items = 0
+
+            constructor() {
+                super([Id, Comma, Semi], {
+                    lookaheadStrategy: new LLStarLookaheadStrategy({ logging: () => {} })
+                })
+                this.performSelfAnalysis()
+            }
+
+            Main = this.RULE("Main", () => {
+                this.SUBRULE(this.List)
+                this.OPTION(() => {
+                    this.CONSUME(Comma)
+                    this.CONSUME(Id)
+                })
+                this.CONSUME(Semi)
+            })
+
+            List = this.RULE("List", () => {
+                this.AT_LEAST_ONE_SEP({
+                    SEP: Comma,
+                    DEF: () => {
+                        this.ACTION(() => this.items++)
+                        this.CONSUME(Id)
+                    }
+                })
+            })
+        }
+
+        function parse(...tokens: TokenType[]) {
+            const parser = new ListParser()
+            parser.input = tokens.map(e => createRegularToken(e))
+            parser.Main()
+            return { items: parser.items, errors: parser.errors.map(e => e.name) }
+        }
+
+        it("Should parse a single item", () => {
+            expect(parse(Id, Semi)).toEqual({ items: 1, errors: [] })
+        })
+
+        it("Should greedily consume separated items", () => {
+            expect(parse(Id, Comma, Id, Semi)).toEqual({ items: 2, errors: [] })
+        })
+
+        it("Should report a missing first iteration as an early exit", () => {
+            // The exit prediction used to be mistaken for "enter" due to the swapped
+            // transition order of separator loops, misplacing the error inside the iteration
+            expect(parse(Semi)).toEqual({ items: 0, errors: ["EarlyExitException"] })
+        })
+    })
+
     describe("LL(*) lookahead", () => {
         const A = createToken({ name: "A", pattern: "a" })
         const B = createToken({ name: "B", pattern: "b" })

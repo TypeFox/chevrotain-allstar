@@ -5,6 +5,7 @@
  ******************************************************************************/
 
 import map from "lodash-es/map.js"
+import { Rule } from "chevrotain"
 import { ATNState, DecisionState } from "./atn.js"
 
 export interface DFA {
@@ -12,6 +13,8 @@ export interface DFA {
   states: Record<string, DFAState>
   decision: number
   atnStartState: DecisionState
+  // If set, configs which leave the rule of the decision continue at the call sites of that rule
+  callers?: Map<Rule, ATNState[]>
 }
 
 export interface DFAState {
@@ -59,7 +62,8 @@ export class ATNConfigSet {
   }
 
   get alts(): number[] {
-    return map(this.configs, (e) => e.alt)
+    // Multiple configs can belong to the same alternative
+    return Array.from(new Set(map(this.configs, (e) => e.alt))).sort((a, b) => a - b)
   }
 
   get key(): string {
