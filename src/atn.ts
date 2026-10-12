@@ -382,17 +382,26 @@ function plus(
     })
     blkStart.loopback = loop
     end.loopback = loop
-    atn.decisionMap[buildATNKey(rule, sep ? 'RepetitionMandatoryWithSeparator' : 'RepetitionMandatory', plus.idx)] = loop;
     epsilon(blkEnd, loop) // block can see loop back
 
     // The continue edge is always at index 0 and the exit edge at index 1,
     // consistent with all other decision states
     if (sep === undefined) {
         epsilon(loop, blkStart) // loop back to start
+        atn.decisionMap[buildATNKey(rule, 'RepetitionMandatory', plus.idx)] = loop
     } else {
         // loop back to start with separator
         epsilon(loop, sep.left)
         epsilon(sep.right, blkStart)
+        // Predict from a synthetic entry decision, analogous to the star loop's entry:
+        // enter the block (0) or skip to the follow set (1).
+        const entry = newState<StarLoopEntryState>(atn, rule, plus, {
+            type: ATN_STAR_LOOP_ENTRY
+        })
+        defineDecisionState(atn, entry)
+        epsilon(entry, blkStart)
+        epsilon(entry, end)
+        atn.decisionMap[buildATNKey(rule, 'RepetitionMandatoryWithSeparator', plus.idx)] = entry
     }
     epsilon(loop, end) // exit
 

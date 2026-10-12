@@ -235,6 +235,111 @@ describe("ATN Simulator", () => {
         })
     })
 
+    describe("First item token in follow set of mandatory repetition with separator", () => {
+        const Id = createToken({ name: "Id", pattern: "id" })
+        const Comma = createToken({ name: "Comma", pattern: "," })
+        const Semi = createToken({ name: "Semi", pattern: ";" })
+
+        // The first list item is indistinguishable from the exit path when predicting
+        // from the loop-back state, since Id is in FOLLOW(List). The first-iteration
+        // check must look at the iteration content instead.
+        class SuffixParser extends EmbeddedActionsParser {
+            items = 0
+
+            constructor() {
+                super([Id, Comma, Semi], {
+                    lookaheadStrategy: new LLStarLookaheadStrategy({ logging: () => {} })
+                })
+                this.performSelfAnalysis()
+            }
+
+            Main = this.RULE("Main", () => {
+                this.SUBRULE(this.List)
+                this.OPTION(() => this.CONSUME(Comma))
+                this.OPTION2(() => this.CONSUME1(Id))
+                this.CONSUME(Semi)
+            })
+
+            List = this.RULE("List", () => {
+                this.AT_LEAST_ONE_SEP({
+                    SEP: Comma,
+                    DEF: () => {
+                        this.ACTION(() => this.items++)
+                        this.CONSUME(Id)
+                    }
+                })
+            })
+        }
+
+        function parse(...tokens: TokenType[]) {
+            const parser = new SuffixParser()
+            parser.input = tokens.map(e => createRegularToken(e))
+            parser.Main()
+            return { items: parser.items, errors: parser.errors.map(e => e.name) }
+        }
+
+        it("Should parse a single item", () => {
+            expect(parse(Id, Semi)).toEqual({ items: 1, errors: [] })
+        })
+
+        it("Should parse separated items", () => {
+            expect(parse(Id, Comma, Id, Semi)).toEqual({ items: 2, errors: [] })
+        })
+
+        it("Should exit the repetition before the suffix item", () => {
+            expect(parse(Id, Id, Semi)).toEqual({ items: 1, errors: [] })
+        })
+    })
+
+    describe("Right-recursive rule with follow conflict", () => {
+        const Id = createToken({ name: "Id", pattern: "id" })
+        const Comma = createToken({ name: "Comma", pattern: "," })
+        const Semi = createToken({ name: "Semi", pattern: ";" })
+
+        // Expanding the outer context of the recursive call site must not recurse
+        // endlessly; this guards the `visited` set used during closure computation
+        class RecursiveParser extends EmbeddedActionsParser {
+            constructor() {
+                super([Id, Comma, Semi], {
+                    lookaheadStrategy: new LLStarLookaheadStrategy({ logging: () => {} })
+                })
+                this.performSelfAnalysis()
+            }
+
+            Main = this.RULE("Main", () => {
+                this.SUBRULE(this.R)
+                this.OPTION(() => {
+                    this.CONSUME(Comma)
+                    this.CONSUME(Id)
+                })
+                this.CONSUME(Semi)
+            })
+
+            R = this.RULE("R", () => {
+                this.CONSUME(Id)
+                this.OPTION(() => {
+                    this.CONSUME(Comma)
+                    this.SUBRULE(this.R)
+                })
+            })
+        }
+
+        function parse(...tokens: TokenType[]) {
+            const parser = new RecursiveParser()
+            parser.input = tokens.map(e => createRegularToken(e))
+            parser.Main()
+            return parser.errors.map(e => e.name)
+        }
+
+        it("Should terminate and parse a non-recursive input", () => {
+            expect(parse(Id, Semi)).toEqual([])
+        })
+
+        it("Should terminate and parse a recursive input", () => {
+            expect(parse(Id, Comma, Id, Semi)).toEqual([])
+        })
+    })
+
     describe("LL(*) lookahead", () => {
         const A = createToken({ name: "A", pattern: "a" })
         const B = createToken({ name: "B", pattern: "b" })
