@@ -5,6 +5,7 @@
  ******************************************************************************/
 
 import map from "lodash-es/map.js"
+import { Rule } from "chevrotain"
 import { ATNState, DecisionState } from "./atn.js"
 
 export interface DFA {
@@ -12,6 +13,8 @@ export interface DFA {
   states: Record<string, DFAState>
   decision: number
   atnStartState: DecisionState
+  // If set, configs which leave the rule of the decision continue at the call sites of that rule
+  callers?: Map<Rule, ATNState[]>
 }
 
 export interface DFAState {
@@ -59,15 +62,39 @@ export class ATNConfigSet {
   }
 
   get alts(): number[] {
-    return map(this.configs, (e) => e.alt)
+    // Multiple configs can belong to the same alternative
+    return Array.from(new Set(map(this.configs, (e) => e.alt))).sort((a, b) => a - b)
   }
 
+  // FNV-1a hash over all config keys.
+  // Collisions are resolved in `addDFAState` using `equals`
   get key(): string {
-    let value = ""
+    let hash = 0x811c9dc5
     for (const k in this.map) {
-      value += k + ":"
+      for (let i = 0; i < k.length; i++) {
+        hash = Math.imul(hash ^ k.charCodeAt(i), 0x01000193)
+      }
     }
-    return value
+    return (hash >>> 0).toString(36)
+  }
+
+  equals(other: ATNConfigSet): boolean {
+    if (this.configs.length !== other.configs.length) {
+      return false
+    }
+    for (let i = 0; i < this.configs.length; i++) {
+      const a = this.configs[i]
+      const b = other.configs[i]
+      if (a.alt !== b.alt || a.state.stateNumber !== b.state.stateNumber || a.stack.length !== b.stack.length) {
+        return false
+      }
+      for (let j = 0; j < a.stack.length; j++) {
+        if (a.stack[j].stateNumber !== b.stack[j].stateNumber) {
+          return false
+        }
+      }
+    }
+    return true
   }
 }
 

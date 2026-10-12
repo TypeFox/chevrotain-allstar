@@ -382,20 +382,28 @@ function plus(
     })
     blkStart.loopback = loop
     end.loopback = loop
-    atn.decisionMap[buildATNKey(rule, sep ? 'RepetitionMandatoryWithSeparator' : 'RepetitionMandatory', plus.idx)] = loop;
     epsilon(blkEnd, loop) // block can see loop back
 
-    // Depending on whether we have a separator we put the exit transition at index 1 or 0
-    // This influences the chosen option in the lookahead DFA
+    // The continue edge is always at index 0 and the exit edge at index 1,
+    // consistent with all other decision states
     if (sep === undefined) {
         epsilon(loop, blkStart) // loop back to start
-        epsilon(loop, end) // exit
+        atn.decisionMap[buildATNKey(rule, 'RepetitionMandatory', plus.idx)] = loop
     } else {
-        epsilon(loop, end) // exit
         // loop back to start with separator
         epsilon(loop, sep.left)
         epsilon(sep.right, blkStart)
+        // Predict from a synthetic entry decision, analogous to the star loop's entry:
+        // enter the block (0) or skip to the follow set (1).
+        const entry = newState<StarLoopEntryState>(atn, rule, plus, {
+            type: ATN_STAR_LOOP_ENTRY
+        })
+        defineDecisionState(atn, entry)
+        epsilon(entry, blkStart)
+        epsilon(entry, end)
+        atn.decisionMap[buildATNKey(rule, 'RepetitionMandatoryWithSeparator', plus.idx)] = entry
     }
+    epsilon(loop, end) // exit
 
     return {
         left: blkStart,

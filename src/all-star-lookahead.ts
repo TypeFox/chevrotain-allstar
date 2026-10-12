@@ -56,13 +56,18 @@ import forEach from "lodash-es/forEach.js";
 import isEmpty from "lodash-es/isEmpty.js";
 import reduce from "lodash-es/reduce.js";
 
-type DFACache = (predicateSet: PredicateSet) => DFA
+// One DFA per predicate set. `callers` assigned on the cache propagates to
+// every DFA it creates, regardless of which predicate set is used.
+type DFACache = {
+    (predicateSet: PredicateSet): DFA
+    callers?: Map<Rule, ATNState[]>
+}
 
 export type AmbiguityReport = (message: string) => void;
 
 function createDFACache(startState: DecisionState, decision: number): DFACache {
     const map: Record<string, DFA | undefined> = {}
-    return (predicateSet) => {
+    const cache: DFACache = (predicateSet) => {
         const key = predicateSet.toString()
         let existing = map[key]
         if (existing !== undefined) {
@@ -71,12 +76,14 @@ function createDFACache(startState: DecisionState, decision: number): DFACache {
             existing = {
                 atnStartState: startState,
                 decision,
+                callers: cache.callers,
                 states: {}
             }
             map[key] = existing
             return existing
         }
     }
+    return cache
 }
 
 class PredicateSet {
@@ -238,6 +245,12 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
         const key = buildATNKey(rule, prodType, prodOccurrence);
         const decisionState = this.atn.decisionMap[key];
         const decisionIndex = decisionState.decision;
+        const buildAdaptivePredict = (onError: (this: BaseParser) => boolean) =>
+            function (this: BaseParser): boolean {
+                const result = adaptivePredict.call(this, dfas, decisionIndex, EMPTY_PREDICATES, logging, incomplete)
+                // A prediction error means the input matches neither entering nor exiting the production
+                return typeof result === "object" ? onError.call(this) : result === 0
+            }
         const alts = map(
             getLookaheadPaths({
                 maxLookahead: 1,
@@ -250,9 +263,10 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
             }
           )
         
-          if (isLL1Sequence(alts) && alts[0][0] && !dynamicTokensEnabled && !optionalHasFollowConflict(decisionState, prodType, callers)) {
+          if (isLL1Sequence(alts) && alts[0][0] && !dynamicTokensEnabled) {
             const alt = alts[0]
             const singleTokensTypes = flatten(alt)
+            let ll1Lookahead: (this: BaseParser) => boolean
         
             if (
               singleTokensTypes.length === 1 &&
@@ -261,7 +275,7 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
               const expectedTokenType = singleTokensTypes[0]
               const expectedTokenUniqueKey = expectedTokenType.tokenTypeIdx
         
-              return function (this: BaseParser): boolean {
+              ll1Lookahead = function (this: BaseParser): boolean {
                 return this.LA_FAST(1).tokenTypeIdx === expectedTokenUniqueKey
               }
             } else {
@@ -279,16 +293,20 @@ export class LLStarLookaheadStrategy extends LLkLookaheadStrategy {
                 {} as Record<number, boolean>
               )
         
-              return function (this: BaseParser): boolean {
+              ll1Lookahead = function (this: BaseParser): boolean {
                 const nextToken = this.LA_FAST(1)
                 return choiceToAlt[nextToken.tokenTypeIdx] === true
               }
             }
+            if (!optionalHasFollowConflict(decisionState, callers)) {
+              return ll1Lookahead
+            }
+            dfas[decisionIndex].callers = callers
+            // On erroneous input, fall back to the local LL(1) decision,
+            // so that the error is reported where it actually occurs
+            return buildAdaptivePredict(ll1Lookahead)
           }
-          return function (this: BaseParser) {
-            const result = adaptivePredict.call(this, dfas, decisionIndex, EMPTY_PREDICATES, logging, incomplete)
-              return typeof result === "object" ? false : result === 0;
-          }
+          return buildAdaptivePredict(function () { return false })
     }
 
 }
@@ -388,14 +406,10 @@ function firstSet(start: ATNState, callers?: Map<Rule, ATNState[]>): Set<number>
 // decision must fall back to LL(*) adaptive prediction.
 function optionalHasFollowConflict(
     decisionState: DecisionState,
-    prodType: OptionalProductionType,
     callers: Map<Rule, ATNState[]>
 ): boolean {
-    // The mandatory-with-separator loop places its exit edge at index 0 and its
-    // continue (via separator) edge at index 1; every other production is reversed.
-    const sepPlus = prodType === "RepetitionMandatoryWithSeparator"
-    const enterTransition = decisionState.transitions[sepPlus ? 1 : 0]
-    const exitTransition = decisionState.transitions[sepPlus ? 0 : 1]
+    const enterTransition = decisionState.transitions[0]
+    const exitTransition = decisionState.transitions[1]
     if (enterTransition === undefined || exitTransition === undefined) {
         return false
     }
@@ -429,7 +443,7 @@ function adaptivePredict(
     const dfa = dfaCaches[decision](predicateSet)
     let start = dfa.start
     if (start === undefined) {
-        const closure = computeStartState(dfa.atnStartState as ATNState)
+        const closure = computeStartState(dfa.atnStartState as ATNState, dfa.callers)
         start = addDFAState(dfa, newDFAState(closure))
         dfa.start = start
     }
@@ -492,7 +506,7 @@ function computeLookaheadTarget(
     predicateSet: PredicateSet,
     logging: AmbiguityReport
 ): DFAState {
-    const reach = computeReachSet(previousD.configs, token, predicateSet)
+    const reach = computeReachSet(previousD.configs, token, predicateSet, dfa.callers)
     if (reach.size === 0) {
         addDFAEdge(dfa, previousD, token, DFA_ERROR)
         return DFA_ERROR
@@ -619,7 +633,8 @@ function getExistingTargetState(
 function computeReachSet(
     configs: ATNConfigSet,
     token: IToken,
-    predicateSet: PredicateSet
+    predicateSet: PredicateSet,
+    callers?: Map<Rule, ATNState[]>
 ): ATNConfigSet {
     const intermediate = new ATNConfigSet()
     const skippedStopStates: ATNConfig[] = []
@@ -654,12 +669,16 @@ function computeReachSet(
 
     if (reach === undefined) {
         reach = new ATNConfigSet()
+        const outer = createOuterContext(callers)
         for (const c of intermediate.elements) {
-            closure(c, reach)
+            closure(c, reach, outer)
         }
     }
 
-    if (skippedStopStates.length > 0 && !hasConfigInRuleStopState(reach)) {
+    // When simulating the outer context, stop states only remain for rules without call sites
+    // Nothing can follow those rules, so they only match the end of the input
+    const stopStatesMatch = callers === undefined || tokenMatcher(token, EOF)
+    if (stopStatesMatch && skippedStopStates.length > 0 && !hasConfigInRuleStopState(reach)) {
         for (const c of skippedStopStates) {
             reach.add(c)
         }
@@ -724,8 +743,13 @@ function addDFAState(dfa: DFA, state: DFAState): DFAState {
     }
     // Repetitions have the same config set
     // Therefore, storing the key of the config in a map allows us to create a loop in our DFA
-    const mapKey = state.configs.key
-    const existing = dfa.states[mapKey]
+    let mapKey = state.configs.key
+    let existing = dfa.states[mapKey]
+    // The key is a hash; on a collision with a different config set, probe the next key
+    while (existing !== undefined && !existing.configs.equals(state.configs)) {
+        mapKey += "!"
+        existing = dfa.states[mapKey]
+    }
     if (existing !== undefined) {
         return existing
     }
@@ -734,8 +758,9 @@ function addDFAState(dfa: DFA, state: DFAState): DFAState {
     return state
 }
 
-function computeStartState(atnState: ATNState): ATNConfigSet {
+function computeStartState(atnState: ATNState, callers?: Map<Rule, ATNState[]>): ATNConfigSet {
     const configs = new ATNConfigSet()
+    const outer = createOuterContext(callers)
 
     const numberOfTransitions = atnState.transitions.length
     for (let i = 0; i < numberOfTransitions; i++) {
@@ -745,13 +770,24 @@ function computeStartState(atnState: ATNState): ATNConfigSet {
             alt: i,
             stack: []
         }
-        closure(config, configs)
+        closure(config, configs, outer)
     }
 
     return configs
 }
 
-function closure(config: ATNConfig, configs: ATNConfigSet): void {
+interface OuterContext {
+    callers: Map<Rule, ATNState[]>
+    // Rule stop configs for which the call sites have already been entered
+    // Guards against infinite recursion through (transitively) recursive rules
+    visited: Set<string>
+}
+
+function createOuterContext(callers?: Map<Rule, ATNState[]>): OuterContext | undefined {
+    return callers ? { callers, visited: new Set() } : undefined
+}
+
+function closure(config: ATNConfig, configs: ATNConfigSet, outer?: OuterContext): void {
     const p = config.state
 
     if (p.type === ATN_RULE_STOP) {
@@ -763,11 +799,23 @@ function closure(config: ATNConfig, configs: ATNConfigSet): void {
                 alt: config.alt,
                 stack: atnStack
             }
-            closure(followConfig, configs)
+            closure(followConfig, configs, outer)
         } else {
-            // Dipping into outer context, simply add the config
-            // This will stop computation once every config is at the rule stop state
-            configs.add(config)
+            const followStates = outer?.callers.get(p.rule)
+            if (followStates === undefined) {
+                // Dipping into outer context, simply add the config
+                // This will stop computation once every config is at the rule stop state
+                configs.add(config)
+            } else {
+                // Dipping into outer context, continue at every call site of the rule
+                const key = getATNConfigKey(config)
+                if (!outer!.visited.has(key)) {
+                    outer!.visited.add(key)
+                    for (const followState of followStates) {
+                        closure({ state: followState, alt: config.alt, stack: [] }, configs, outer)
+                    }
+                }
+            }
         }
         return
     }
@@ -782,7 +830,7 @@ function closure(config: ATNConfig, configs: ATNConfigSet): void {
         const c = getEpsilonTarget(config, transition)
 
         if (c !== undefined) {
-            closure(c, configs)
+            closure(c, configs, outer)
         }
     }
 }
