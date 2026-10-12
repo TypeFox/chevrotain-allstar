@@ -743,8 +743,13 @@ function addDFAState(dfa: DFA, state: DFAState): DFAState {
     }
     // Repetitions have the same config set
     // Therefore, storing the key of the config in a map allows us to create a loop in our DFA
-    const mapKey = state.configs.key
-    const existing = dfa.states[mapKey]
+    let mapKey = state.configs.key
+    let existing = dfa.states[mapKey]
+    // The key is a hash; on a collision with a different config set, probe the next key
+    while (existing !== undefined && !existing.configs.equals(state.configs)) {
+        mapKey += "!"
+        existing = dfa.states[mapKey]
+    }
     if (existing !== undefined) {
         return existing
     }
